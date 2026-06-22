@@ -1,0 +1,79 @@
+function [bound_fraction_list, cell_areas] = single_cell(masks_list,BF_masks_list, tracks_within_cells, bound_indices)
+    BF_filtered_masks = cell(1, size(masks_list, 2));
+    cell_IDs_list = cell(1,size(masks_list, 2));
+    bound_fraction_list = cell(1,size(masks_list, 2));
+    cell_areas = cell(1,size(masks_list, 2));
+    for i = 1 : size(masks_list, 2)
+        nucleus_mask = masks_list{i};
+        BF_mask = BF_masks_list{i};
+        BF_filtered_masks{i} = BF_filtering(nucleus_mask, BF_mask);
+        cell_IDs_list{i} = assign_tracks_to_cells(BF_filtered_masks{i}, tracks_within_cells{i});
+        bound_fraction_list{i} = bound_fraction_single_cell(bound_indices{i}, cell_IDs_list{i});
+        cell_areas{i} = area_calculator(BF_filtered_masks{i});
+
+    end
+    bound_fraction_single_cell_final.bound_fraction = bound_fraction_list;
+    bound_fraction_single_cell_final.cell_areas = cell_areas;
+    save('bound_fraction_single_cell.mat', "bound_fraction_single_cell_final");
+    
+
+function BF_filtered_mask = BF_filtering(nucleus_mask, BF_mask)
+    % Initialize a mask for cells in S phase.
+    BF_filtered_mask = false(size(BF_mask));
+    % Get the unique cell IDs from the brightfield segmentation. 
+    cell_IDs = unique(BF_mask);
+    % Omitting the first ID as it's assumed to be the background (e.g., 0).
+    cell_IDs = cell_IDs(cell_IDs ~= 0); 
+    % Loop through each cell in the brightfield segmentation.
+    for cell_ID = cell_IDs'
+        current_cell_mask = (BF_mask == cell_ID);
+        % Check if the current cell has any overlap with the S phase nucleus mask.
+        if any(any(current_cell_mask & nucleus_mask))
+            BF_filtered_mask = BF_filtered_mask | current_cell_mask;
+        end
+    end
+end
+function cell_IDs = assign_tracks_to_cells(BF_filtered_mask, tracks_within_cells)
+    % This function takes the filtered BF mask and the filtered tracks (the
+    % ones that are in the nuclei) and finds each track belonges to what
+    % cell. 
+    % input: 
+    % - BF_filtered_mask (mask image): outputted from BF_ filtering function
+    % - tracks_within_cells (n * 18 matrix, n is the number of filtered tracks 
+    % in the file) : outputted from track_filtering
+    % outputs:
+    % - cell_IDs ( n * 1 vector): each row is the cell ID in which the
+    % track belongs to.
+    
+    cell_IDs = BF_filtered_mask(sub2ind(size(BF_filtered_mask), tracks_within_cells(:,18), tracks_within_cells(:,17)));
+
+end
+function bound_fraction_list = bound_fraction_single_cell(bound_indice, cell_IDs)
+    cell_num = length(unique(cell_IDs));
+    bound_fraction_list = zeros(cell_num, 1);
+    for id = 1:cell_num
+        bound_indice_current_cell = bound_indice(cell_IDs == id);
+        bound_fraction_list(id) = sum(bound_indice_current_cell)/ length(bound_indice_current_cell); 
+    end
+
+end
+function cell_areas = area_calculator(BF_filtered_mask)
+    IDs = unique(BF_filtered_mask);
+    IDs = IDs(IDs ~= 0 );
+    cell_num = length(IDs);
+    cell_areas = zeros(cell_num, 1);
+    % Loop through each unique cell ID
+    for cell_ID = 1: cell_num
+        % Create a binary mask for the current cell
+        current_cell_mask = (BF_filtered_mask == cell_ID);
+        % Calculate the area of the current cell
+        cell_areas(cell_ID) = sum(current_cell_mask(:));
+    end
+end
+    function plot_bound_fraction_vs_cell_size(bound_fraction_list,cell_areas)
+        scatter(cell_areas, bound_fraction_list, 'filled');
+        
+
+
+end
+end
